@@ -1,0 +1,43 @@
+# Зависимости
+node_modules/
+
+# Исходный код (не публикуем, только dist)
+src/
+
+# Тесты
+**/*.test.ts
+**/*.test.js
+
+# Конфигурации
+tsconfig.json
+tsconfig.test.json
+jest.config.js
+.nyc_output/  # Если используете nyc для покрытия
+
+# Покрытие тестов
+coverage/
+
+# Сборка (не включаем, т.к. files указывает на dist)
+dist/
+# Подождите: нет, dist/ НЕ исключаем! Удалите эту строку, если добавили по ошибке.
+# Вместо этого, в package.json "files": ["dist"] уже ограничивает.
+
+# Временные файлы
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Документация (если не хотите публиковать, но README.md оставьте)
+# docs/
+# examples/  # Если есть примеры, добавьте
+
+# Git
+.git
+.gitignore
+
+# IDE/редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
