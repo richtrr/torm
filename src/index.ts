@@ -1,320 +1,273 @@
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
 const TYPES = {
 	Null: 1,
 	Boolean: 2,
 	Number: 3,
 	Date: 4,
+	String: 5,
+	Array: 6,
+	Object: 7,
 
-	Int8Array: 11,
-	Int16Array: 12,
-	Int32Array: 13,
-	Uint8Array: 14,
-	Uint16Array: 15,
-	Uint32Array: 16,
-	Float32Array: 17,
-	Float64Array: 18,
+	Int8Array: 10,
+	Int16Array: 11,
+	Int32Array: 12,
+	Uint8Array: 13,
+	Uint16Array: 14,
+	Uint32Array: 15,
+	Float32Array: 16,
+	Float64Array: 17,
+} as const;
 
-	String: 21,
-	Array: 22,
-	Object: 23,
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+type TypeCode = (typeof TYPES)[keyof typeof TYPES];
+
+type SupportedTypedArray =
+	| Int8Array
+	| Int16Array
+	| Int32Array
+	| Uint8Array
+	| Uint16Array
+	| Uint32Array
+	| Float32Array
+	| Float64Array;
+
+export type SupportedValue =
+	| null
+	| undefined
+	| boolean
+	| number
+	| string
+	| Date
+	| SupportedTypedArray
+	| Array<SupportedValue>
+	| { [key: string]: SupportedValue };
+
+const TYPED_ARRAY_TYPES: Record<
+	number,
+	new (buffer: ArrayBufferLike) => SupportedTypedArray
+> = {
+	[TYPES.Int8Array]: Int8Array,
+	[TYPES.Int16Array]: Int16Array,
+	[TYPES.Int32Array]: Int32Array,
+	[TYPES.Uint8Array]: Uint8Array,
+	[TYPES.Uint16Array]: Uint16Array,
+	[TYPES.Uint32Array]: Uint32Array,
+	[TYPES.Float32Array]: Float32Array,
+	[TYPES.Float64Array]: Float64Array,
 };
 
-function typeIndexOf(value: any): number {
-	if (value instanceof Function || value === null || value === undefined) {
-		return TYPES.Null;
-	} else if (value instanceof Int8Array) {
-		return TYPES.Int8Array;
-	} else if (value instanceof Int16Array) {
-		return TYPES.Int16Array;
-	} else if (value instanceof Int32Array) {
-		return TYPES.Int32Array;
-	} else if (value instanceof Uint8Array) {
-		return TYPES.Uint8Array;
-	} else if (value instanceof Uint16Array) {
-		return TYPES.Uint16Array;
-	} else if (value instanceof Uint32Array) {
-		return TYPES.Uint32Array;
-	} else if (value instanceof Float32Array) {
-		return TYPES.Float32Array;
-	} else if (value instanceof Float64Array) {
-		return TYPES.Float64Array;
-	} else if (value instanceof Array) {
-		return TYPES.Array;
-	} else if (value instanceof Date) {
-		return TYPES.Date;
-	} else if (typeof value === 'number') {
-		return TYPES.Number;
-	} else if (typeof value === 'boolean') {
-		return TYPES.Boolean;
-	} else if (typeof value === 'object') {
-		return TYPES.Object;
-	} else if (typeof value === 'string') {
-		return TYPES.String;
-	}
+function getTypeCode(value: SupportedValue): TypeCode {
+	if (value === null || value === undefined) return TYPES.Null;
+	if (typeof value === 'boolean') return TYPES.Boolean;
+	if (typeof value === 'number') return TYPES.Number;
+	if (typeof value === 'string') return TYPES.String;
+	if (value instanceof Date) return TYPES.Date;
+	if (Array.isArray(value)) return TYPES.Array;
+	if (value instanceof Int8Array) return TYPES.Int8Array;
+	if (value instanceof Int16Array) return TYPES.Int16Array;
+	if (value instanceof Int32Array) return TYPES.Int32Array;
+	if (value instanceof Uint8Array) return TYPES.Uint8Array;
+	if (value instanceof Uint16Array) return TYPES.Uint16Array;
+	if (value instanceof Uint32Array) return TYPES.Uint32Array;
+	if (value instanceof Float32Array) return TYPES.Float32Array;
+	if (value instanceof Float64Array) return TYPES.Float64Array;
+	if (typeof value === 'object') return TYPES.Object;
 
 	return TYPES.Null;
 }
 
-type ReadChunk = {
-	typeIndex: number;
-	value: any;
-	length: number;
+// === READ ===
+
+interface ReadResult {
+	value: SupportedValue;
 	offset: number;
-};
+}
 
-function readChunk(buffer: ArrayBuffer, offset: number): ReadChunk {
-	let dataView = new DataView(buffer);
-	let typeIndex = dataView.getUint8(offset);
-	offset++;
-	let length = 0;
+function readChunk(buffer: ArrayBuffer, offset: number = 0): ReadResult {
+	const view = new DataView(buffer);
+	const type = view.getUint8(offset);
+	offset += 1;
 
-	let value: any = null;
-	if (typeIndex >= TYPES.Int8Array) {
-		length = dataView.getUint32(offset);
-		offset += 4;
-		if (typeIndex <= TYPES.String) {
-			let sub: ArrayBuffer = buffer.slice(offset, offset + length);
-			offset += length;
-			switch (typeIndex) {
-				case TYPES.Int8Array:
-					value = new Int8Array(sub);
-					break;
-				case TYPES.Int16Array:
-					value = new Int16Array(sub);
-					break;
-				case TYPES.Int32Array:
-					value = new Int32Array(sub);
-					break;
-				case TYPES.Uint8Array:
-					value = new Uint8Array(sub);
-					break;
-				case TYPES.Uint16Array:
-					value = new Uint16Array(sub);
-					break;
-				case TYPES.Uint32Array:
-					value = new Uint32Array(sub);
-					break;
-				case TYPES.Float32Array:
-					value = new Float32Array(sub);
-					break;
-				case TYPES.Float64Array:
-					value = new Float64Array(sub);
-					break;
-				case TYPES.String:
-					value = textDecoder.decode(sub);
-					break;
+	if (type === TYPES.Null) {
+		return { value: null, offset };
+	}
+	if (type === TYPES.Boolean) {
+		return { value: view.getUint8(offset++) !== 0, offset };
+	}
+	if (type === TYPES.Number) {
+		const value = view.getFloat64(offset);
+		return { value, offset: offset + 8 };
+	}
+	if (type === TYPES.Date) {
+		return { value: new Date(view.getFloat64(offset)), offset: offset + 8 };
+	}
+
+	const length = view.getUint32(offset);
+	offset += 4;
+
+	if (TYPED_ARRAY_TYPES[type] || type === TYPES.String) {
+		const slice = buffer.slice(offset, offset + length);
+		offset += length;
+
+		if (type === TYPES.String) {
+			return { value: decoder.decode(slice), offset };
+		}
+
+		const Ctor = TYPED_ARRAY_TYPES[type];
+		return { value: new Ctor(slice), offset };
+	}
+
+	if (type === TYPES.Array) {
+		const arr: SupportedValue[] = [];
+		for (let i = 0; i < length; i++) {
+			const result = readChunk(buffer, offset);
+			offset = result.offset;
+			arr.push(result.value);
+		}
+		return { value: arr, offset };
+	}
+
+	if (type === TYPES.Object) {
+		const obj: Record<string, SupportedValue> = {};
+		for (let i = 0; i < length; i++) {
+			const keyResult = readChunk(buffer, offset);
+			offset = keyResult.offset;
+			const valResult = readChunk(buffer, offset);
+			offset = valResult.offset;
+			obj[keyResult.value as string] = valResult.value;
+		}
+		return { value: obj, offset };
+	}
+
+	throw new Error(`Unknown type code: ${type}`);
+}
+
+// === WRITE ===
+
+interface Chunk {
+	type: TypeCode;
+	length: number;
+	data?: Uint8Array | Array<Chunk>;
+	value?: any;
+}
+
+function createChunk(value: SupportedValue): Chunk {
+	const type = getTypeCode(value);
+
+	if (type === TYPES.Null) return { type, length: 0 };
+	if (type === TYPES.Boolean)
+		return { type, length: 0, value: value ? 0xff : 0x00 };
+	if (type === TYPES.Number) return { type, length: 0, value };
+	if (type === TYPES.Date)
+		return { type, length: 0, value: (value as Date).getTime() };
+
+	if (type === TYPES.String) {
+		const data = encoder.encode(value as string);
+		return { type, length: data.byteLength, data };
+	}
+
+	if (TYPED_ARRAY_TYPES[type]) {
+		const arr = value as SupportedTypedArray;
+		return {
+			type,
+			length: arr.byteLength,
+			data: new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+		};
+	}
+
+	if (type === TYPES.Array) {
+		const items = (value as SupportedValue[]).map(createChunk);
+		return { type, length: items.length, data: items };
+	}
+
+	if (type === TYPES.Object) {
+		const entries: Chunk[] = [];
+		for (const key in value as object) {
+			if (Object.prototype.hasOwnProperty.call(value, key)) {
+				entries.push(createChunk(key));
+				entries.push(createChunk((value as any)[key]));
 			}
+		}
+		return { type, length: entries.length / 2, data: entries };
+	}
+
+	throw new Error('Unsupported value');
+}
+
+function writeChunk(chunk: Chunk, buffer: ArrayBuffer, offset: number): number {
+	const view = new DataView(buffer);
+	const uint8 = new Uint8Array(buffer);
+
+	view.setUint8(offset++, chunk.type);
+
+	if (chunk.type === TYPES.Null) return offset;
+	if (chunk.type === TYPES.Boolean) {
+		view.setUint8(offset++, chunk.value as number);
+		return offset;
+	}
+	if (chunk.type === TYPES.Number) {
+		view.setFloat64(offset, chunk.value as number);
+		return offset + 8;
+	}
+	if (chunk.type === TYPES.Date) {
+		view.setFloat64(offset, chunk.value as number);
+		return offset + 8;
+	}
+
+	// Длинные типы
+	view.setUint32(offset, chunk.length);
+	offset += 4;
+
+	if (TYPED_ARRAY_TYPES[chunk.type] || chunk.type === TYPES.String) {
+		uint8.set(chunk.data as Uint8Array, offset);
+		return offset + chunk.length;
+	}
+
+	if (Array.isArray(chunk.data)) {
+		for (const sub of chunk.data) {
+			offset = writeChunk(sub, buffer, offset);
 		}
 	}
 
-	switch (typeIndex) {
-		case TYPES.Null:
-			value = null;
-			break;
-		case TYPES.Boolean:
-			value = dataView.getUint8(offset) != 0;
-			offset++;
-			break;
-
-		case TYPES.Number:
-			value = dataView.getFloat64(offset);
-			offset += 8;
-			break;
-
-		case TYPES.Array:
-			value = [];
-			for (let i = 0; i < length; i++) {
-				let item = readChunk(buffer, offset);
-				offset = item.offset;
-				value.push(item.value);
-			}
-			break;
-		case TYPES.Object:
-			value = {};
-			for (let i = 0; i < length; i++) {
-				const key = readChunk(buffer, offset);
-				offset = key.offset;
-				const val = readChunk(buffer, offset);
-				offset = val.offset;
-				value[key.value] = val.value;
-			}
-			break;
-		case TYPES.Date:
-			value = new Date(dataView.getFloat64(offset));
-			offset += 8;
-			break;
-	}
-
-	return {
-		typeIndex: typeIndex,
-		value: value,
-		length: length,
-		offset: offset,
-	};
-}
-
-type CreateChunk = {
-	byteLength: number;
-	length: number;
-	value: any;
-	subBuffer: any | null;
-	typeIndex: number;
-};
-
-function createChunk(value: any, typeIndex: number = 0): CreateChunk {
-	if (!typeIndex) typeIndex = typeIndexOf(value);
-
-	let length = 0;
-	let byteLength = 0;
-	let val;
-	let subBuffer;
-
-	switch (typeIndex) {
-		case TYPES.Null:
-			byteLength = 1;
-			break;
-
-		case TYPES.Boolean:
-			byteLength = 1 + 1;
-			break;
-
-		case TYPES.Number:
-			byteLength = 1 + 8;
-			break;
-
-		case TYPES.Int8Array:
-		case TYPES.Int16Array:
-		case TYPES.Int32Array:
-		case TYPES.Uint8Array:
-		case TYPES.Uint16Array:
-		case TYPES.Uint32Array:
-		case TYPES.Float32Array:
-		case TYPES.Float64Array:
-			length = value.byteLength;
-			byteLength = 1 + 4 + length;
-			break;
-
-		case TYPES.String:
-			subBuffer = textEncoder.encode(value);
-			length = subBuffer.byteLength;
-			byteLength = 1 + 4 + length;
-			break;
-
-		case TYPES.Array:
-			length = value.length;
-			val = [];
-			byteLength = 1 + 4;
-			for (let i = 0; i < value.length; i++) {
-				let chunk = createChunk(value[i]);
-				byteLength += chunk.byteLength;
-				val.push(chunk);
-			}
-			value = val;
-			break;
-
-		case TYPES.Object:
-			val = [];
-			byteLength = 1 + 4;
-			for (let s in value) {
-				if (value.hasOwnProperty(s)) {
-					length++;
-					let chunk = createChunk(s, TYPES.String);
-					byteLength += chunk.byteLength;
-					val.push(chunk);
-					chunk = createChunk(value[s]);
-					byteLength += chunk.byteLength;
-					val.push(chunk);
-				}
-			}
-			value = val;
-			break;
-
-		case TYPES.Date:
-			byteLength = 1 + 8;
-			break;
-	}
-
-	return {
-		byteLength: byteLength,
-		length: length,
-		value: value,
-		subBuffer: subBuffer,
-		typeIndex: typeIndex,
-	};
-}
-
-function writeChunk(
-	chunk: CreateChunk,
-	buffer: ArrayBuffer,
-	offset: number
-): number {
-	let dataView = new DataView(buffer);
-	dataView.setUint8(offset, chunk.typeIndex);
-	offset++;
-
-	let value = chunk.value;
-	let length: number = chunk.length;
-
-	switch (chunk.typeIndex) {
-		case TYPES.Null:
-			break;
-		case TYPES.Boolean:
-			dataView.setUint8(offset, value ? 0xff : 0x00);
-			offset++;
-			break;
-		case TYPES.Number:
-			dataView.setFloat64(offset, value);
-			offset += 8;
-			break;
-
-		case TYPES.Int8Array:
-		case TYPES.Int16Array:
-		case TYPES.Int32Array:
-		case TYPES.Uint8Array:
-		case TYPES.Uint16Array:
-		case TYPES.Uint32Array:
-		case TYPES.Float32Array:
-		case TYPES.Float64Array:
-			dataView.setUint32(offset, length);
-			offset += 4;
-			new Uint8Array(buffer).set(new Uint8Array(value.buffer), offset);
-			offset += length;
-			break;
-
-		case TYPES.String:
-			dataView.setUint32(offset, length);
-			offset += 4;
-			new Uint8Array(buffer).set(new Uint8Array(chunk.subBuffer), offset);
-			offset += length;
-			break;
-
-		case TYPES.Array:
-		case TYPES.Object:
-			dataView.setUint32(offset, length);
-			offset += 4;
-			for (let i = 0; i < value.length; i++)
-				offset = writeChunk(value[i], buffer, offset);
-			break;
-		case TYPES.Date:
-			dataView.setFloat64(offset, value.getTime());
-			offset += 8;
-			break;
-	}
 	return offset;
 }
 
-function serialize(value: any): ArrayBuffer {
-	let chunk = createChunk(value, 0);
-	let buffer = new ArrayBuffer(chunk.byteLength);
-	writeChunk(chunk, buffer, 0);
-	return buffer;
+// === PUBLIC API ===
+
+function calculateSize(chunk: Chunk): number {
+	if (chunk.type === TYPES.Null) return 1;
+	if (chunk.type === TYPES.Boolean) return 2;
+	if (chunk.type === TYPES.Number || chunk.type === TYPES.Date) return 9;
+
+	if (TYPED_ARRAY_TYPES[chunk.type] || chunk.type === TYPES.String) {
+		return 1 + 4 + chunk.length;
+	}
+
+	if (chunk.type === TYPES.Array || chunk.type === TYPES.Object) {
+		let size = 1 + 4;
+		if (Array.isArray(chunk.data)) {
+			for (const sub of chunk.data) {
+				size += calculateSize(sub);
+			}
+		}
+		return size;
+	}
+
+	return 0;
 }
 
-function deserialize(buffer: ArrayBuffer): any {
-	let chunk = readChunk(buffer, 0);
-	return chunk.value;
-}
+export const TORM = {
+	serialize(value: SupportedValue): ArrayBuffer {
+		const chunk = createChunk(value);
+		const size = calculateSize(chunk);
+		const buffer = new ArrayBuffer(size);
+		writeChunk(chunk, buffer, 0);
+		return buffer;
+	},
 
-export const TORM = { serialize, deserialize };
+	deserialize(buffer: ArrayBuffer): SupportedValue {
+		if (buffer.byteLength === 0) throw new Error('Empty buffer');
+		return readChunk(buffer).value;
+	},
+} as const;
