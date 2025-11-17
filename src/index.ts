@@ -1,20 +1,19 @@
 const TYPES = {
-	Null: 1,
-	Boolean: 2,
-	Number: 3,
-	Date: 4,
-	String: 5,
-	Array: 6,
-	Object: 7,
-
-	Int8Array: 10,
-	Int16Array: 11,
-	Int32Array: 12,
-	Uint8Array: 13,
-	Uint16Array: 14,
-	Uint32Array: 15,
-	Float32Array: 16,
-	Float64Array: 17,
+	Null: 0x00,
+	Boolean: 0x01,
+	Number: 0x02,
+	Date: 0x03,
+	String: 0x04,
+	Array: 0x05,
+	Object: 0x06,
+	Int8Array: 0x07,
+	Int16Array: 0x08,
+	Int32Array: 0x09,
+	Uint8Array: 0x0a,
+	Uint16Array: 0x0b,
+	Uint32Array: 0x0c,
+	Float32Array: 0x0d,
+	Float64Array: 0x0e,
 } as const;
 
 const encoder = new TextEncoder();
@@ -237,8 +236,8 @@ function writeChunk(chunk: Chunk, buffer: ArrayBuffer, offset: number): number {
 
 function calculateSize(chunk: Chunk): number {
 	if (chunk.type === TYPES.Null) return 1;
-	if (chunk.type === TYPES.Boolean) return 2;
-	if (chunk.type === TYPES.Number || chunk.type === TYPES.Date) return 9;
+	if (chunk.type === TYPES.Boolean) return 1 + 1;
+	if (chunk.type === TYPES.Number || chunk.type === TYPES.Date) return 1 + 8;
 
 	if (TYPED_ARRAY_TYPES[chunk.type] || chunk.type === TYPES.String) {
 		return 1 + 4 + chunk.length;
